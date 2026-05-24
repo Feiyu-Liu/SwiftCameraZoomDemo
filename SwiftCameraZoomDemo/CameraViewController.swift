@@ -123,6 +123,10 @@ final class CameraViewController: UIViewController {
         cameraManager.onPhotoCaptured = { [weak self] in
             self?.showCaptureFlash()
         }
+
+        cameraManager.onZoomChanged = { [weak self] displayZoomFactor in
+            self?.updateZoomSelectionForCurrentZoom(displayZoomFactor)
+        }
     }
 
     private func configureDock() {
@@ -206,6 +210,16 @@ final class CameraViewController: UIViewController {
             button.layer.shadowRadius = isSelected ? 6 : 2
             button.layer.shadowOffset = CGSize(width: 0, height: 1)
         }
+    }
+
+    private func updateZoomSelectionForCurrentZoom(_ currentZoomFactor: CGFloat) {
+        guard let nearestOption = zoomOptions.min(by: {
+            abs($0.factor - currentZoomFactor) < abs($1.factor - currentZoomFactor)
+        }) else {
+            return
+        }
+
+        updateZoomSelection(to: nearestOption.factor)
     }
 
     private func showCaptureFlash() {

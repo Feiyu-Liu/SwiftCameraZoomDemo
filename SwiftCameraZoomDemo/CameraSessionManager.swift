@@ -8,6 +8,7 @@ final class CameraSessionManager: NSObject {
     var onAuthorizationDenied: (() -> Void)?
     var onConfigurationFailed: ((String) -> Void)?
     var onPhotoCaptured: (() -> Void)?
+    var onZoomChanged: ((CGFloat) -> Void)?
 
     private let sessionQueue = DispatchQueue(label: "com.tilapia.camera.session")
     private let photoOutput = AVCapturePhotoOutput()
@@ -16,6 +17,7 @@ final class CameraSessionManager: NSObject {
     private var currentVideoDevice: AVCaptureDevice?
     private var isConfigured = false
     private let uiMaxZoomFactor: CGFloat = 10.0
+    private let cameraAppStyleZoomRampRate: Float = 5.0
 
     override init() {
         previewLayer = AVCaptureVideoPreviewLayer(session: session)
@@ -137,6 +139,7 @@ final class CameraSessionManager: NSObject {
                 self.session.addOutput(self.photoOutput)
                 self.isConfigured = true
                 self.session.commitConfiguration()
+                self.notifyZoomChanged(rawZoomFactor: device.videoZoomFactor, on: device)
                 self.session.startRunning()
             } catch {
                 self.session.commitConfiguration()
@@ -187,6 +190,14 @@ final class CameraSessionManager: NSObject {
         }
     }
 
+    private func displayZoomFactor(forRawZoom rawFactor: CGFloat, device: AVCaptureDevice) -> CGFloat {
+        if #available(iOS 18.0, *) {
+            return rawFactor * device.displayVideoZoomFactorMultiplier
+        } else {
+            return rawFactor
+        }
+    }
+
     private func setRawZoomFactor(_ rawFactor: CGFloat, on device: AVCaptureDevice, smooth: Bool) {
         do {
             try device.lockForConfiguration()
@@ -197,14 +208,23 @@ final class CameraSessionManager: NSObject {
             let clampedZoom = min(max(rawFactor, minZoom), maxZoom)
 
             if smooth {
-                device.ramp(toVideoZoomFactor: clampedZoom, withRate: 8.0)
+                device.ramp(toVideoZoomFactor: clampedZoom, withRate: cameraAppStyleZoomRampRate)
             } else {
                 device.videoZoomFactor = clampedZoom
             }
+
+            notifyZoomChanged(rawZoomFactor: clampedZoom, on: device)
         } catch {
             DispatchQueue.main.async {
                 self.onConfigurationFailed?(error.localizedDescription)
             }
+        }
+    }
+
+    private func notifyZoomChanged(rawZoomFactor: CGFloat, on device: AVCaptureDevice) {
+        let displayZoom = displayZoomFactor(forRawZoom: rawZoomFactor, device: device)
+        DispatchQueue.main.async {
+            self.onZoomChanged?(displayZoom)
         }
     }
 
